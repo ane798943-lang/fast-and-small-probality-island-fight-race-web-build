@@ -1,0 +1,43 @@
+name: Build Island Fight Race web template
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # speed = fastest on one core (-O3), size = smaller (-Os).
+        # The old build used size_extra (-Oz); add it back here to compare: [speed, size, size_extra]
+        optimize: [speed, size]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 4.0.20
+      - run: pip install scons
+      - name: Get Godot 4.7.2-stable source
+        run: git clone --depth 1 --branch 4.7.2-stable https://github.com/godotengine/godot.git godot-src
+      - name: Check the class list against the real Godot class tree
+        run: python3 custom_engine/check_profile.py godot-src custom_engine/ifr_web.build custom_engine/required_classes.txt godot-src/ifr_web.build
+      - name: Build
+        working-directory: godot-src
+        run: |
+          scons -j"$(nproc)" platform=web target=template_release threads=no dlink_enabled=no production=yes optimize=${{ matrix.optimize }} \
+            lto=full minizip=no builtin_certs=no javascript_eval=yes \
+            build_profile=ifr_web.build \
+            vulkan=no d3d12=no metal=no opengl3=yes \
+            modules_enabled_by_default=no \
+            module_gdscript_enabled=yes module_freetype_enabled=yes module_text_server_fb_enabled=yes module_svg_enabled=yes \
+            module_jolt_physics_enabled=yes module_ogg_enabled=yes module_vorbis_enabled=yes \
+            module_websocket_enabled=yes module_mbedtls_enabled=yes \
+            module_jpg_enabled=yes module_webp_enabled=yes \
+            module_etcpak_enabled=yes module_astcenc_enabled=yes module_bcdec_enabled=yes
+          mkdir -p ../out
+          cp bin/*.zip ../out/web-template_${{ matrix.optimize }}.zip
+          ls -l bin ../out
+          unzip -p ../out/web-template_${{ matrix.optimize }}.zip godot.wasm | gzip -9 | wc -c | xargs echo "godot.wasm gzip bytes:"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-template-${{ matrix.optimize }}
+          path: out/*.zip
